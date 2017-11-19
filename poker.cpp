@@ -1,75 +1,203 @@
-#include <iostream>
-#include <sstream>
 #include <algorithm>
+#include <cmath>
+#include <cstdlib>
+#include <ctime>
+#include <iomanip>
+#include <iostream>
+#include <tuple>
 #include <vector>
- 
-using namespace std;
- 
-class poker
+
+enum HandScore
 {
-public:
-    poker() { rank = "A23456789TJQK"; suit = "SHCD"; }
-    string analyze( string h )
-    {
-	memset( rankCnt, 0, 13 ); memset( suitCnt, 0, 4 ); vector<string> hand;
-	transform( h.begin(), h.end(), h.begin(), toupper ); istringstream i( h );
-	copy( istream_iterator<string>( i ), istream_iterator<string>(), back_inserter<vector<string> >( hand ) );
-	if( hand.size() != 5 ) return "invalid hand."; vector<string>::iterator it = hand.begin();
-	sort( it, hand.end() ); if( hand.end() != adjacent_find( it, hand.end() ) ) return "invalid hand.";
-	while( it != hand.end() )
-	{
-	    if( ( *it ).length() != 2 ) return "invalid hand.";
-	    int n = rank.find( ( *it ).at( 0 ) ), l = suit.find( ( *it ).at( 1 ) );
-	    if( n < 0 || l < 0 ) return "invalid hand.";
-	    rankCnt[n]++; suitCnt[l]++; it++;
-	}
-	cout << h << ": "; return analyzeHand();
-    }
-private:
-    string analyzeHand()
-    {
-	bool p1 = false, p2 = false, t = false, f = false, fl = false, st = false;
-	for( int x = 0; x < 13; x++ )
-	    switch( rankCnt[x] )
-	    {
-		case 2: if( p1 ) p2 = true; else p1 = true; break;
-		case 3: t = true; break;
-		case 4: f = true;
-	    }
-	for( int x = 0; x < 4; x++ )if( suitCnt[x] == 5 ){ fl = true; break; }
- 
-	if( !p1 && !p2 && !t && !f )
-        {
-	    int s = 0;
-	    for( int x = 0; x < 13; x++ )
-	    { 
-		if( rankCnt[x] ) s++; else s = 0;
-		if( s == 5 ) break;
-	    }
-	    st = ( s == 5 ) || ( s == 4 && rankCnt[0] && !rankCnt[1] );
-	}
- 
-	if( st && fl ) return "straight-flush";
-	else if( f ) return "four-of-a-kind"; 
-	else if( p1 && t ) return "full-house";
-	else if( fl ) return "flush";
-	else if( st ) return "straight";
-	else if( t ) return "three-of-a-kind";
-	else if( p1 && p2 ) return "two-pair";
-	else if( p1 ) return "one-pair";
-        return "high-card";
-    }
-    string rank, suit;
-    unsigned char rankCnt[13], suitCnt[4];
+    high_card,
+    one_pair,
+    two_pair,
+    three_of_a_kind,
+    straight,
+    flush,
+    full_house,
+    four_of_a_kind,
+    straight_flush,
+    royal_flush,
+    num_scores,
 };
- 
-int main( int argc, char* argv[] )
+const char* const HandScoreNames[num_scores] =
 {
-    poker p; 
-    cout << p.analyze( "2h 2d 2s ks qd" ) << endl; cout << p.analyze( "2h 5h 7d 8s 9d" ) << endl;
-    cout << p.analyze( "ah 2d 3s 4s 5s" ) << endl; cout << p.analyze( "2h 3h 2d 3s 3d" ) << endl;
-    cout << p.analyze( "2h 7h 2d 3s 3d" ) << endl; cout << p.analyze( "2h 7h 7d 7s 7c" ) << endl;
-    cout << p.analyze( "th jh qh kh ah" ) << endl; cout << p.analyze( "4h 4c kc 5d tc" ) << endl;
-    cout << p.analyze( "qc tc 7c 6c 4c" ) << endl << endl; return system( "pause" );
+    "High Card",
+    "One Pair",
+    "Two Pair",
+    "Three of a Kind",
+    "Straight",
+    "Flush",
+    "Full House",
+    "Four of a Kind",
+    "Straight Flush",
+    "Royal Flush",
+};
+const int kStartingRank = 2;
+const int kNumRanks = 13;
+const int kNumSuits = 4;
+const int kCardsPerHand = 5;
+const int kCardsPerDeck = 52;
+
+struct Card
+{
+    Card(int suit_ = 0, int rank_ = kStartingRank) : rank(rank_), suit(suit_) {}
+    bool operator<(const Card& other) const
+    {
+        return std::tie(rank, suit) < std::tie(other.rank, other.suit);
+    }
+    int rank;
+    int suit;
+};
+
+struct Hand
+{
+    Hand() : cards(kCardsPerHand) {}
+    HandScore GetScore()
+    {
+        HandScore score = high_card;
+        std::sort(cards.begin(), cards.end());
+        int counts[kNumRanks] = {};
+        int suits[kNumSuits] = {};
+        for(size_t i = 0; i < cards.size(); ++i)
+        {
+            ++counts[cards[i].rank - kStartingRank];
+            ++suits[cards[i].suit];
+        }
+        int pair_count = 0;
+        int three_count = 0;
+        int four_count = 0;
+        for(int i = 0; i < kNumRanks; ++i)
+        {
+            if(counts[i] == 2)
+            {
+                ++pair_count;
+            }
+            else if(counts[i] == 3)
+            {
+                ++three_count;
+            }
+            else if(counts[i] == 4)
+            {
+                ++four_count;
+            }
+        }
+        bool is_flush = false;
+        for(int i = 0; i < kNumSuits; ++i)
+        {
+            if(suits[i] == kCardsPerHand)
+            {
+                is_flush = true;
+                break;
+            }
+        }
+        const int spread5  = cards[cards.size() - 1].rank - cards[0].rank;
+        const int spread4 = cards[cards.size() - 2].rank - cards[0].rank;
+        if(is_flush)
+        {
+            score = flush;
+            if(spread5 == 4)
+            {
+                if(cards[0].rank == 10)
+                {
+                    score = royal_flush;
+                }
+                else
+                {
+                    score = straight_flush;
+                }
+            }
+            //special check for 2345A
+            else if(spread5 == 12 && spread4 == 3 && cards[0].rank == 2 && cards[cards.size() - 1].rank == 14)
+            {
+                score = straight_flush;
+            }
+        }
+        else
+        {
+            if(spread5 == 4)
+            {
+                score = straight;
+            }
+            //special check for 2345A
+            else if(spread5 == 12 && spread4 == 3 && cards[0].rank == 2 && cards[cards.size() - 1].rank == 14)
+            {
+                score = straight;
+            }
+            else if(four_count == 1)
+            {
+                score = four_of_a_kind;
+            }
+            else if(three_count == 1)
+            {
+                if(pair_count == 1)
+                {
+                    score = full_house;
+                }
+                else
+                {
+                    score = three_of_a_kind;
+                }
+            }
+            else if(pair_count == 2)
+            {
+                score = two_pair;
+            }
+            else if(pair_count == 1)
+            {
+                score = one_pair;
+            }
+        }
+        return score;
+    }
+    std::vector<Card> cards;
+};
+
+struct Deck
+{
+    Deck() : cards(kCardsPerDeck)
+    {
+        for(int s = 0; s < kNumSuits; ++s)
+        {
+            for(int r = 0; r < kNumRanks; ++r)
+            {
+                cards[s * kNumRanks + r] = Card(s, r + kStartingRank);
+            }
+        }
+    }
+    void shuffle()
+    {
+        std::random_shuffle(cards.begin(), cards.end());
+    }
+    void deal(Hand& h)
+    {
+        for(size_t i = 0; i < h.cards.size(); ++i)
+        {
+            h.cards[i] = cards[i];
+        }
+    }
+    std::vector<Card> cards;
+};
+
+int main()
+{
+    std::srand(static_cast<unsigned int>(std::time(0)));
+    Deck deck;
+    Hand hand;
+    int scores[num_scores] = {};
+    const int num_hands = 1000;
+    const int num_width = static_cast<int>(std::log10(num_hands) + 1);
+    for(int i = 0; i < num_hands; ++i)
+    {
+        deck.shuffle();
+        deck.deal(hand);
+        ++scores[hand.GetScore()];
+    }
+    std::cout << "Results for " << num_hands << " Hands:" << std::endl;
+    for(int i = 0; i < num_scores; ++i)
+    {
+        std::cout << std::setw(num_width) << std::right << scores[i] << " - " << HandScoreNames[i] << std::endl;
+    }
+    return 0;
 }
- 
